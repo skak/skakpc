@@ -1,0 +1,10 @@
+#!/bin/bash
+
+while [[ 1 == 1 ]]; do
+clear
+echo "you'll need to control+c out of this one pal"
+du -h $1
+sleep 2
+done
+
+

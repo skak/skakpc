@@ -1,0 +1,13 @@
+#!/bin/bash
+
+if [[ "$*" == "" ]] || [[ "$*" == "--help" ]]; then
+echo "command takes two arguments and uses that as the name of the ab file and for the tar file being created"
+echo "example: ab2tar meow oink"
+echo "would extract meow.ab and result with oink.tar"
+echo "will overwrite oink.tar if it exists"
+
+else
+dd if="$1" bs=24 skip=1 | openssl zlib -d > "$2".tar
+fi
+
+exit 0

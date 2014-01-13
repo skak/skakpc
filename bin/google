@@ -1,0 +1,13 @@
+#!/usr/bin/bash
+
+if [[ "$*" == "" ]] || [[ "$*" == "--help" ]]; then
+    echo "Usage:"
+    echo "$0 <search term>"
+    echo "Loads google-chrome-unstable with your search query."
+else
+    if [ -f /usr/bin/google-chrome-unstable ]; then
+        nohup google-chrome-unstable "http://www.google.ca/#newwindow=1&q=${*}"&
+    fi
+fi
+
+exit 0
