@@ -1,0 +1,117 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use IO::Socket;
+use Data::Dumper;
+use threads;
+use threads::shared;
+
+$| = 0;
+our @clients;
+share(@clients);
+@clients = ();
+
+our @client_names;
+share(@client_names);
+@client_names = ();
+
+# create the server socket
+my $sock = new IO::Socket::INET (
+    LocalPort => '31337',
+    Proto => 'tcp',
+    Listen => 1,
+    Reuse => 1,
+    Backlog => 10,
+);
+
+sub handle_client { 
+    my $c = shift;
+    print $c "001 - Nickname\n";
+    my $line = <$c>;
+    $line =~ s/\r//;
+    $line =~ s/\n//;
+    print "Got Nickname '$line' (" , $c->peerhost(), ")\n";
+    $client_names[fileno $c] = $line;
+    for my $client (@clients) {
+        if (defined $client) {
+            if (open my $fh, ">&=$client") {
+                print $fh  "-> $line connected (", $c->peerhost(), ")\n";
+                close($fh);
+            }
+            else {
+                $client_names[$client] = undef;
+                next;
+            }
+        }
+    }
+    while (my $input = $c->getline()) {
+        if ($input =~ m/^\/names.*/) {
+            my $namelist;
+            for (@client_names) {
+                if (defined $_) {
+                    $namelist .= " $_ ";
+                }
+            }
+            $c->say($namelist);
+        }
+        else {
+            for my $client (@clients) { 
+                if (defined $client) {
+                    if (open my $fh, ">&=$client") {
+                        print $fh  "$input";
+                        print "$input";
+                        close($fh);
+                    }
+                    else {
+                        $client_names[$client] = undef;
+                        next;
+                    }
+                }
+            }
+        }
+    }
+}
+
+my %thrds;
+sub handle_disconnects() {
+    while(1) {
+        for my $client (@clients) {
+            if (defined $client) {
+                # check if they can be opened, then they hopefully are connected
+                if (open my $fh, ">&=$client") {
+                    close $fh;
+                }
+                else {
+                    print $client_names[$client] . " disconnected\n";
+                    for my $c (@clients) {
+                        if (defined $c) {
+                        # check if they can be opened, then they hopefully are connected
+                            if (open my $fh, ">&=$c") {
+                                print $fh "-> " . $client_names[$client] . " disconnected\n";
+                                close $fh;
+                            }
+                        }
+                    }
+                    $client_names[$client] = undef;
+                    $clients[$client] = undef;
+                    for (keys %thrds) {
+                        unless (exists $thrds{$_}) {
+                            delete $thrds{$_};
+                            $client_names[$_] = undef;
+                            $clients[$_] = undef;
+                        }
+                    }
+                }
+            }
+        }
+        sleep 5;
+    }
+
+}
+
+my $worker = threads->new( \&handle_disconnects )->detach();
+
+while(my $client = $sock->accept()) {
+    $clients[fileno $client] = fileno $client;
+    $thrds{fileno $client} = threads->new( \&handle_client, $client )->detach();
+}

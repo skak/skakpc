@@ -1,0 +1,48 @@
+#!/usr/bin/bash
+
+function pull-lmd {
+    site="https://github.com/libimobiledevice"
+    repo=( "libplist" "usbmuxd" "libimobiledevice" "ifuse" "ideviceinstaller" "idevicerestore" "libirecovery" "libusbmuxd" "sbmanager" )
+    
+    for i in "${repo[@]}"; do
+    echo $i
+    if [ -d ./lmd ]; then
+        cd lmd
+        if [ -d ./$i ]; then
+            cd $i
+            git pull
+            cd ..
+        else
+            git clone "${site}/${i}"
+        fi
+        cd ..
+    fi
+    done
+}
+
+function pull-ojb {
+    site="git://openjailbreak.org"
+    repo=( "heapsim-1" "idevicerestore-1" "libcnary-1" "libcrippy-1" "libdyldcache-1" "libidevicebackup-1-0" "libidevicecrashreport-1" "libimg3-1" "libimg4-1" "libimobiledevice-1" "libipsw-1" "libirecovery-2" "libmacho-1" "libmbdb-1" "libpartialzip-1" "libplist-1" "libsyringe-1" "libtss-1" "libusbmuxd-1" )
+    #repo=openjailbreak
+    #cd openjailbreak
+    #./autobuild.sh
+
+    for i in "${repo[@]}"; do
+    echo $i
+    if [ -d ./ojb ]; then
+        cd ojb
+        if [ -d ./$i ]; then
+            cd $i
+            git pull
+            cd ..
+        else
+            git clone "${site}/${i}"
+        fi
+        cd ..
+    fi
+done
+
+}
+
+pull-lmd
+pull-ojb

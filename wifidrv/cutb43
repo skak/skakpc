@@ -1,0 +1,66 @@
+#!/bin/bash
+
+if [[ "$UID" != "0" ]]; then
+  echo "You'll need to log in as root, pal."
+  exit 0
+else
+  if [[ "$USER" == "skak" ]]; then
+    echo "Hello sir, how are you today?"
+  fi
+  echo "Presumably, you are root."
+  echo "Welcome aboard and enjoy the ride."
+  export FIRMDIR="/lib/firmware"
+  echo "Firmware dir set to /lib/firmware, please change in script if this is wrong."
+if [[ -f "b43-fwcutter-015.tar.bz2" && -f "broadcom-wl-5.100.138.tar.bz2" ]]; then
+    echo "Everything exists, we\'re good to go."
+    tar -xf b43-fwcutter-015.tar.bz2
+    tar -xf broadcom-wl-5.100.138.tar.bz2
+    echo "Extracted objects"
+    cd b43-fwcutter-015
+    make
+    make install
+    echo "Installed the firmware cutter"
+    sleep 1
+    cd ..
+    cd ./broadcom-wl-5.100.138
+    cd ./linux
+    b43-fwcutter -w "$FIRMDIR" wl_apsta.o
+    echo "Used cutter to install b43"
+    cd ../..
+    modprobe -r b43
+    sleep 1
+    modprobe b43
+    echo "Pulled b43 out of the crowd, dolled it up, released \'er back into the wild."
+    echo "You should be good to go. Happy surfing."
+    sleep 1
+    rm -R b43-fwcutter-015
+    rm -r broadcom-wl-5.100.138
+    echo "Cleaned up after myself."
+      if [ ! -d /wifidrv ]; then
+        mkdir /wifidrv
+        echo "Created /wifidrv in system root to hold a backup of these packages."
+      fi
+        if [ ! -f /wifidrv/cutb43 ]; then
+          cp ./cutb43 /wifidrv/cutb43
+          echo "Backed up cutb43 script."
+        elif [ ! -f /wifidrv/b43-fwcutter-015.tar.bz2 ]; then
+          cp ./b43-fwcutter-015.tar.bz2 /wifidrv/b43-fwcutter-015.tar.bz2
+          echo "Backed up firmware cutter package."
+        elif [ ! -f /wifidrv/broadcom-wl-5.100.138.tar.bz2 ]; then
+          cp ./broadcom-wl-5.100.138.tar.bz2 /wifidrv/broadcom-wl-5.100.138.tar.bz2
+          echo "Backed up wireless driver package."
+        else
+          echo "Everything appears to be already backed up."
+        fi
+elif [ ! -f "b43-fwcutter-015.tar.bz2" ]; then
+    echo "Missing firmware cutter package, aborting."
+    exit 1
+elif [ ! -f "broadcom-wl-5.100.138.tar.bz2" ]; then
+    echo "Missing wireless driver package, aborting."
+    exit 1
+else
+    echo "Something terribly fucked up has happened. Mayday mayday."
+    exit 1
+fi
+fi
+

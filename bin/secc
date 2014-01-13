@@ -1,0 +1,208 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use Term::ReadKey;
+use IO::Socket::INET;
+use Getopt::Std;
+use Crypt::CBC;
+use threads;
+use Curses::UI;
+
+$| = 1;
+
+# version number, author info, whatever ...
+our $VERSION = "0.3";
+
+# vars for hostname and nickname
+our($opt_h, $opt_n);
+
+# get options, -h for hostname -n for nickname
+getopt('hn');
+
+# usage info
+sub usage {
+    print <<"EOUSAGE";
+    secc $VERSION
+
+     Usage:
+        
+            secc -h [HOSTNAME] -n [NICKNAME]
+
+            where hostname is either an IP address or a hostname and
+            nickname is a ... well ... nickname .. what else?!
+
+EOUSAGE
+}
+
+# tell the user to rtfm if he doesn't get it
+usage() and exit unless (defined $opt_h and defined $opt_n);
+
+# name var is $opt_n now .. just for clarity
+my $name = $opt_n;
+
+print "Please enter encryption key for conversation: ";
+ReadMode('noecho');
+my $password = ReadLine(0);
+chomp($password);
+ReadMode('restore');
+print "\n";
+
+my $cui = new Curses::UI ( -clear_on_exit => 0, -color_support => 1);
+my $win = $cui->add('win', 'Window', -border => 1, -title => "secc $VERSION");
+
+# create the socket
+my $host = $opt_h;
+my $port = 31337;
+
+my $sock = IO::Socket::INET->new(
+    PeerAddr => $host,
+    PeerPort => $port,
+    Proto    => 'tcp',
+);
+
+# error checking as usual
+defined $sock or die "ERROR: Can't connect to port $port on $host: $!\n";
+
+my @pids;
+
+sub kill_kids {
+    kill "SIGTERM", @pids;
+    $sock->disconnect();
+    $cui->exit_curses();
+    exit(0);
+}
+
+$cui->set_binding(\&kill_kids, "\cQ");
+
+# login procedure
+my $recv_data = $sock->getline(); # nickname ?
+$sock->say($name);
+
+
+# create the cipher object
+my $cipher = Crypt::CBC->new({   'key'    => $password,
+                                'cipher' => 'Blowfish',
+                                'header' => 'salt',
+                                'padding' => 'standard',
+                                'regenerate_key' => 1,
+                                'prepend_iv' => 0}
+);
+
+my $text = $win->add( 
+    'text', 'TextViewer',
+    -fg => 'white',
+    -title => "< -- log -- > (^R to redraw/clear chat log)",
+    -readonly => 1,
+    -y => 1,
+    -focusable => 0,
+    -vscrollbar => 'right',
+    -wrapping => 1,
+    -height => int ($win->height() - 10),
+    -intellidraw => 1,
+    -border => 1,
+);
+
+
+sub real_upd {
+    my $ref = shift;
+    my $send_data = shift;
+    my $msg;
+    if ($send_data =~ m/^\/([a-z]+) */) {
+        $msg = "/$1";
+    }
+
+    else {
+        $msg = $cipher->encrypt_hex("$name: $send_data");
+    }
+    # say() creates a newline at the end, so we don't need to append it.
+    $sock->say($msg);
+}
+
+sub update_text {
+    my $ref = shift;
+    my $txt = $ref->get();
+    if ($txt =~ m/\n/) {
+        if ($txt =~ m/\w+/) {
+            $text->focus();
+            &real_upd($ref, $txt);
+            $ref->focus();
+        }
+        $ref->text("");
+        $ref->draw();
+        $ref->pos(0);
+        $ref->focus();
+    }
+    else {
+        $ref->focus();
+        $ref->draw();
+    }
+}
+
+my $editor = $win->add(
+    'editor', 'TextEditor',
+    -y => ($win->height() - 5),
+    -singleline => 0,
+    -border => 1,
+    -intellidraw => 1,
+    -title => " >> $name (^Q to quit)",
+    -onchange => \&update_text,
+    -regexp => '/^.*$/',
+    -height => 3,
+    -homeonblur => 0,
+);
+# redraw func, this is a pain in the ass
+sub redraw {
+    $cui->reset_curses();
+    $text->draw(1);
+}
+
+# fork the get_messages func
+&get_messages();
+$cui->set_binding(\&redraw, "\cR");
+$cui->mainloop();
+
+sub get_messages {
+    my $pid = fork();
+    if ($pid) {
+        push @pids, $pid and return;
+    }
+    while (1) {
+        if ($sock->connected()) { 
+            my $time = sprintf("%02d:%02d:%02d", (localtime)[2,1,0]);
+            my $recv_data = $sock->getline();
+            # if we get a correct salted message ... yes. this is the salted header in hex format.
+            if ($recv_data =~ m/^53616c746564.+/) {
+                my $plain = $cipher->decrypt_hex($recv_data);
+
+                my $new_text = $text->get() . "$time | $plain";
+                my @txt = split /\n/, $new_text;
+                if (scalar @txt > $text->height() - 2) {
+                    shift @txt;
+                }
+                my $final = join "\n", @txt;
+                $text->text("$final\n");
+                $text->draw(1);
+                $editor->focus();
+                $win->draw();
+            }
+            # otherwise, its server messages
+            else {
+                my $new_text = $text->get() . "$time | $recv_data";
+                my @txt = split /\n/, $new_text;
+                if (scalar @txt > $text->height() - 2) {
+                    shift @txt;
+                }
+                my $final = join "\n", @txt;
+                $text->text("$final\n");
+                $text->draw(1);
+                $editor->focus();
+                $win->draw();
+            }
+        }
+        else {
+            exit;
+        }
+    }
+    exit;
+}
+
